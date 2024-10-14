@@ -25,6 +25,9 @@ async def on_ready():
 
 @bot.command()
 async def enable(ctx):
+    if not ctx.author.guild_permissions.administrator:
+        await ctx.send("Vous n'avez pas les permissions nécessaires pour exécuter cette commande.")
+        return
     await ctx.send("Commande active. Envoi actif des messages discord vers Minecraft...")
     await ctx.send("Envoi actif des messages Minecraft vers Discord...")
     
