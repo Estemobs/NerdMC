@@ -28,6 +28,7 @@ async def enable(ctx):
     if not ctx.author.guild_permissions.administrator:
         await ctx.send("Vous n'avez pas les permissions nécessaires pour exécuter cette commande.")
         return
+    bot.minecraft_channel_id = ctx.channel.id
     await ctx.send("Commande active. Envoi actif des messages discord vers Minecraft...")
     await ctx.send("Envoi actif des messages Minecraft vers Discord...")
     
@@ -68,6 +69,7 @@ async def on_message(message):
     if message.author == bot.user:
         return
     if hasattr(bot, 'rewrite_active') and bot.rewrite_active:
+        print(f"Traitement message du canal {message.channel.id} (comparaison avec {bot.minecraft_channel_id})")
         username = str(message.author)
         command = ['sudo', 'tmux', 'send-keys', '-t', 'minecraft', f"say {username}: {message.content}", 'C-j']
         try:
