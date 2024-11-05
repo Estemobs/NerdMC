@@ -69,11 +69,15 @@ async def disable(ctx):
     # Arrêtez l'envoi de messages Discord vers Minecraft
     if hasattr(bot, 'minecraft_channel_id') and bot.minecraft_channel_id:
         bot.minecraft_channel_id = None
-
+        
         # Fermez le processus qui lit les logs de Minecraft
         if hasattr(bot, 'minecraft_log_process') and bot.minecraft_log_process:
             print("Arrêt du processus de lecture des logs Minecraft...")
             bot.minecraft_log_process.terminate()
+        
+        # Annulez la tâche asyncio si elle existe
+        if hasattr(bot, 'read_process_task'):
+            bot.read_process_task.cancel()
         
         # Envoyez un message de confirmation
         await ctx.send("La commande a été désactivée. L'envoi des messages Minecraft vers Discord est maintenant désactivé et l'envoi de messages Discord vers Minecraft s'est arrêté.")
