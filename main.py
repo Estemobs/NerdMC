@@ -14,6 +14,7 @@ with open('config.json', 'r') as f:
 
 intents = discord.Intents.default()
 intents.message_content = True
+stop_reading = False
 
 bot = commands.Bot(command_prefix=config['command_prefix'], intents=intents)
 
@@ -43,19 +44,21 @@ async def enable(ctx):
     
     # Fonction pour lire les lignes du processus
     async def read_process():
-        try:
-            while True:
-                line = await asyncio.to_thread(process.stdout.readline)
-                if not line:
-                    break
-                
-                match = re.search(r'<([^>]+)> (.+)', line.strip())
-                if match:
-                    username, message = match.groups()
-                    await ctx.send(f"{username}: {message}")
-        
-        except Exception as e:
-            print(f"Erreur dans read_process: {e}")
+        global stop_reading
+        while not stop_reading:
+            try:
+                while True:
+                    line = await asyncio.to_thread(process.stdout.readline)
+                    if not line:
+                        break
+                    
+                    match = re.search(r'<([^>]+)> (.+)', line.strip())
+                    if match:
+                        username, message = match.groups()
+                        await ctx.send(f"{username}: {message}")
+            
+            except Exception as e:
+                print(f"Erreur dans read_process: {e}")
         
     # Lancez la lecture des messages Minecraft dans un thread
     asyncio.create_task(read_process())
@@ -75,9 +78,12 @@ async def disable(ctx):
             print("Arrêt du processus de lecture des logs Minecraft...")
             bot.minecraft_log_process.terminate()
         
-        # Annulez la tâche asyncio si elle existe
-        if hasattr(bot, 'read_process_task'):
-            bot.read_process_task.cancel()
+        # Arrêtez la lecture des messages Minecraft
+        global stop_reading
+        stop_reading = True
+        
+        # Attendre que la tâche se termine
+        await asyncio.sleep(0.1)  # Un peu de temps pour que la tâche se termine proprement
         
         # Envoyez un message de confirmation
         await ctx.send("La commande a été désactivée. L'envoi des messages Minecraft vers Discord est maintenant désactivé et l'envoi de messages Discord vers Minecraft s'est arrêté.")
