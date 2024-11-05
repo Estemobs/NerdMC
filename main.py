@@ -59,16 +59,32 @@ async def enable(ctx):
         
     # Lancez la lecture des messages Minecraft dans un thread
     asyncio.create_task(read_process())
-
-    # Variable globale pour savoir si la commande est active
-    bot.rewrite_active = True
+  
+@bot.command()
+async def disable(ctx):
+    if not ctx.author.guild_permissions.administrator:
+        await ctx.send("Vous n'avez pas les permissions nécessaires pour exécuter cette commande.")
+        return
     
+    # Arrêtez l'envoi de messages Discord vers Minecraft
+    if hasattr(bot, 'minecraft_channel_id') and bot.minecraft_channel_id:
+        bot.minecraft_channel_id = None
+
+        # Fermez le processus qui lit les logs de Minecraft
+        if hasattr(bot, 'minecraft_log_process') and bot.minecraft_log_process:
+            print("Arrêt du processus de lecture des logs Minecraft...")
+            bot.minecraft_log_process.terminate()
+        
+        # Envoyez un message de confirmation
+        await ctx.send("La commande a été désactivée. L'envoi des messages Minecraft vers Discord est maintenant désactivé et l'envoi de messages Discord vers Minecraft s'est arrêté.")
+    
+    else:
+        await ctx.send("La commande n'était pas activée.")
 
 @bot.event
 async def on_message(message):
     if message.author.bot:
         return
-    
     if hasattr(bot, 'minecraft_channel_id') and bot.minecraft_channel_id:
         if message.channel.id == bot.minecraft_channel_id:
             username = str(message.author)
