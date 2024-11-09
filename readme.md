@@ -1,6 +1,6 @@
 # NerdMC
 
-NerdMC est un bot Discord spécialisé dans la gestion et la surveillance de serveurs Minecraft. Il permet d'envoyer les messages du jeu en temps réel sur un canal Discord spécifique.
+NerdMC est un bot Discord. Il permet d'envoyer les messages du jeu en temps réel sur un canal Discord spécifique.
 
 ## Fonctionnalités principales
 
