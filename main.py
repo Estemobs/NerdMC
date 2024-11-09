@@ -33,6 +33,10 @@ async def enable(ctx):
     await ctx.send("Commande active. Envoi actif des messages discord vers Minecraft...")
     await ctx.send("Envoi actif des messages Minecraft vers Discord...")
     
+    global stop_reading
+    if stop_reading == True:
+        stop_reading = False
+        
     # Capture les messages Minecraft
     process = subprocess.Popen(
         ['sudo', 'tail', '-f', '/home/minecraft/logs/latest.log'],
@@ -44,14 +48,11 @@ async def enable(ctx):
     
     # Fonction pour lire les lignes du processus
     async def read_process():
-        global stop_reading
-        if stop_reading == False :
             try:
-                while True:
+                while stop_reading == False:
                     line = await asyncio.to_thread(process.stdout.readline)
                     if not line:
                         break
-                    
                     match = re.search(r'<([^>]+)> (.+)', line.strip())
                     if match:
                         username, message = match.groups()
@@ -60,8 +61,6 @@ async def enable(ctx):
             
             except Exception as e:
                 print(f"Erreur dans read_process: {e}")
-        else :
-            return
     # Lancez la lecture des messages Minecraft dans un thread
     asyncio.create_task(read_process())
   
