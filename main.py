@@ -1,12 +1,10 @@
 import discord
 from discord.ext import commands
 import json
-import os
 import subprocess
-import threading
 import asyncio
 import traceback
-import re 
+import re
 
 # Load configuration from JSON file
 with open('config.json', 'r') as f:
@@ -34,7 +32,7 @@ async def enable(ctx):
     await ctx.send("Envoi actif des messages Minecraft vers Discord...")
     
     global stop_reading
-    if stop_reading == True:
+    if stop_reading:
         stop_reading = False
         
     # Capture les messages Minecraft
@@ -49,7 +47,7 @@ async def enable(ctx):
     # Fonction pour lire les lignes du processus
     async def read_process():
             try:
-                while stop_reading == False:
+                while not stop_reading:
                     line = await asyncio.to_thread(process.stdout.readline)
                     if not line:
                         break
@@ -109,7 +107,7 @@ async def on_message(message):
             print(f"Traitement message du canal {message.channel.id} (comparaison avec {bot.minecraft_channel_id})")
             command = ['sudo', 'tmux', 'send-keys', '-t', 'minecraft', f"say {username}: {message.content}", 'C-j']
             try:
-                result = subprocess.run(
+                subprocess.run(
                     command,
                     stdin=subprocess.PIPE,
                     stdout=subprocess.PIPE,
