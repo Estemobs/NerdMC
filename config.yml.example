@@ -1,0 +1,31 @@
+# NerdMC – example configuration
+# Copy this file to config.yml and fill in your values.
+
+discord:
+  # Bot token from https://discord.com/developers/applications
+  token: "YOUR_DISCORD_BOT_TOKEN"
+  # ID of the text channel used for the Minecraft bridge
+  # Right-click the channel in Discord (Developer Mode must be on) and copy ID.
+  channel_id: 123456789012345678
+  # Prefix for bot commands (default: !)
+  command_prefix: "!"
+
+rcon:
+  # Hostname or IP of the Minecraft server
+  host: "localhost"
+  # Must match rcon.port in server.properties (default: 25575)
+  port: 25575
+  # Must match rcon.password in server.properties
+  password: "YOUR_RCON_PASSWORD"
+
+minecraft:
+  # Absolute path to the Minecraft log file
+  log_path: "/home/minecraft/logs/latest.log"
+
+# Anti-spam / rate-limiting settings
+antispam:
+  enabled: true
+  # Maximum number of messages a user can send within the time window
+  max_messages: 5
+  # Sliding window duration in seconds
+  window_seconds: 10
