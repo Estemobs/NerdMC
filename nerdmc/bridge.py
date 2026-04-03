@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
-import asyncio
 from collections import deque
 from time import monotonic
 from typing import Callable, Awaitable
 
 from .log_reader import LogReader
-from .rcon_client import RconClient, RconError
+from .rcon_client import RconClient
 
 
 class _RateLimiter:
