@@ -24,17 +24,21 @@ pip install -r requirements.txt
 
 ### Configuration
 
-Remplissez les champs du fichier `config.json` avec vos informations :
-   - Token Discord
-   - Commande préfixe pour les utilisateurs
-   - Informations de connexion Minecraft
+Copiez le fichier d'exemple et remplissez vos informations :
 
-```json
-   {
-    "token": "votre token ",
-    "command_prefix": "votre prefix"
-  }
+```bash
+cp config.json.example config.json
 ```
+
+Paramètres disponibles dans `config.json` :
+
+| Champ | Description |
+|-------|-------------|
+| `token` | Token de votre bot Discord |
+| `command_prefix` | Préfixe des commandes (ex: `!`) |
+| `minecraft_log_path` | Chemin vers le fichier `latest.log` de Minecraft |
+| `minecraft_tmux_session` | Nom de la session tmux du serveur Minecraft |
+| `use_sudo` | `true` si le bot nécessite sudo pour tail/tmux |
 
 ## Utilisation
 
@@ -43,9 +47,9 @@ python main.py
 
 ## Avertissements
 
-- Assurez-vous que tmux est installé sur votre système avant d'exécuter le bot.
+- Assurez-vous que `tmux` est installé sur votre système et que votre serveur Minecraft tourne dans une session tmux nommée (par défaut `minecraft`).
+- Si `use_sudo` est `true`, le bot doit pouvoir exécuter `sudo tail` et `sudo tmux` sans mot de passe. Ajoutez une règle sudoers si nécessaire.
 - Vérifiez que votre compte Discord bot a les permissions nécessaires pour interagir avec les canaux.
-- Le bot nécessite une connexion constante à Discord et à votre serveur Minecraft.
 
 ## Contribution
 

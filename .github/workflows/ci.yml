@@ -37,6 +37,6 @@ jobs:
 
       - name: Smoke test — import check (no bot launch)
         run: |
-          echo '{"command_prefix": "!", "token": "smoke_test_token"}' > config.json
+          cp config.json.example config.json
           python -c "import main"
           rm -f config.json

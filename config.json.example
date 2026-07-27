@@ -1,0 +1,7 @@
+{
+    "token": "votre_token_discord",
+    "command_prefix": "!",
+    "minecraft_log_path": "/home/minecraft/logs/latest.log",
+    "minecraft_tmux_session": "minecraft",
+    "use_sudo": true
+}

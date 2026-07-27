@@ -1,18 +1,23 @@
 import discord
 from discord.ext import commands
 import json
+import os
 import subprocess
 import asyncio
 import traceback
 import re
 
-# Load configuration from JSON file
-with open('config.json', 'r') as f:
+config_path = os.environ.get('NERDMC_CONFIG', 'config.json')
+with open(config_path, 'r') as f:
     config = json.load(f)
 
 intents = discord.Intents.default()
 intents.message_content = True
 stop_reading = False
+
+minecraft_log_path = config.get('minecraft_log_path', '/home/minecraft/logs/latest.log')
+minecraft_tmux_session = config.get('minecraft_tmux_session', 'minecraft')
+use_sudo = config.get('use_sudo', True)
 
 bot = commands.Bot(command_prefix=config['command_prefix'], intents=intents)
 
@@ -36,8 +41,9 @@ async def enable(ctx):
         stop_reading = False
         
     # Capture les messages Minecraft
-    process = subprocess.Popen(
-        ['sudo', 'tail', '-f', '/home/minecraft/logs/latest.log'],
+    cmd = ['sudo', 'tail', '-f', minecraft_log_path] if use_sudo else ['tail', '-f', minecraft_log_path]
+    bot.minecraft_log_process = subprocess.Popen(
+        cmd,
         stdout=subprocess.PIPE,
         bufsize=1,
         universal_newlines=True,
@@ -48,14 +54,13 @@ async def enable(ctx):
     async def read_process():
             try:
                 while not stop_reading:
-                    line = await asyncio.to_thread(process.stdout.readline)
+                    line = await asyncio.to_thread(bot.minecraft_log_process.stdout.readline)
                     if not line:
                         break
                     match = re.search(r'<([^>]+)> (.+)', line.strip())
                     if match:
                         username, message = match.groups()
                         await ctx.send(f"{username}: {message}")
-                        print(stop_reading)
             
             except Exception as e:
                 print(f"Erreur dans read_process: {e}")
@@ -105,10 +110,10 @@ async def on_message(message):
         if message.channel.id == bot.minecraft_channel_id:
             username = str(message.author)
             print(f"Traitement message du canal {message.channel.id} (comparaison avec {bot.minecraft_channel_id})")
-            command = ['sudo', 'tmux', 'send-keys', '-t', 'minecraft', f"say {username}: {message.content}", 'C-j']
+            cmd = ['sudo', 'tmux', 'send-keys', '-t', minecraft_tmux_session, f"say {username}: {message.content}", 'C-j'] if use_sudo else ['tmux', 'send-keys', '-t', minecraft_tmux_session, f"say {username}: {message.content}", 'C-j']
             try:
                 subprocess.run(
-                    command,
+                    cmd,
                     stdin=subprocess.PIPE,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
