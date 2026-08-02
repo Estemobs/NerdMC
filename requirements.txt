@@ -23,7 +23,7 @@ propcache==0.4.1
 pycparser==3.0
 Pygments==2.18.0
 PyJWT==2.6.0
-python-dotenv==0.21.1
+python-dotenv==1.2.2
 PyYAML==6.0.2
 requests==2.32.3
 rich==12.5.1
