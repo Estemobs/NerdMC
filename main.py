@@ -32,6 +32,9 @@ async def enable(ctx):
     if not ctx.author.guild_permissions.administrator:
         await ctx.send("Vous n'avez pas les permissions nécessaires pour exécuter cette commande.")
         return
+    if hasattr(bot, 'minecraft_channel_id') and bot.minecraft_channel_id:
+        await ctx.send("La commande est déjà activée.")
+        return
     bot.minecraft_channel_id = ctx.channel.id
     await ctx.send("Commande active. Envoi actif des messages discord vers Minecraft...")
     await ctx.send("Envoi actif des messages Minecraft vers Discord...")
@@ -52,18 +55,17 @@ async def enable(ctx):
     
     # Fonction pour lire les lignes du processus
     async def read_process():
-            try:
-                while not stop_reading:
-                    line = await asyncio.to_thread(bot.minecraft_log_process.stdout.readline)
-                    if not line:
-                        break
-                    match = re.search(r'<([^>]+)> (.+)', line.strip())
-                    if match:
-                        username, message = match.groups()
-                        await ctx.send(f"{username}: {message}")
-            
-            except Exception as e:
-                print(f"Erreur dans read_process: {e}")
+        try:
+            while not stop_reading:
+                line = await asyncio.to_thread(bot.minecraft_log_process.stdout.readline)
+                if not line:
+                    break
+                match = re.search(r'<([^>]+)> (.+)', line.strip())
+                if match:
+                    username, message = match.groups()
+                    await ctx.send(f"{username}: {message}")
+        except Exception as e:
+            print(f"Erreur dans read_process: {e}")
     # Lancez la lecture des messages Minecraft dans un thread
     asyncio.create_task(read_process())
   
@@ -80,25 +82,19 @@ async def disable(ctx):
         # Fermez le processus qui lit les logs de Minecraft
         if hasattr(bot, 'minecraft_log_process') and bot.minecraft_log_process:
             print("Arrêt du processus de lecture des logs Minecraft...")
-            bot.minecraft_log_process.terminate()
+            try:
+                bot.minecraft_log_process.terminate()
+            except ProcessLookupError:
+                pass
         
         # Arrêtez la lecture des messages Minecraft
-        global stop_reading
         stop_reading = True
-        print(stop_reading)
         
-        # Rafraîchissez manuellement la valeur de stop_reading
-        await asyncio.sleep(0.01)  # Un peu de temps pour que le changement soit pris en compte
-        
-        # Arrêtez la lecture des messages Minecraft
-        bot.stop_reading = True
-        
-        # Attendre que la tâse se termine
+        # Attendre que la tâche se termine
         await asyncio.sleep(0.1)
         
         # Envoyez un message de confirmation
         await ctx.send("La commande a été désactivée. L'envoi des messages Minecraft vers Discord est maintenant désactivé et l'envoi de messages Discord vers Minecraft s'est arrêté.")
-    
     else:
         await ctx.send("La commande n'était pas activée.")
 
@@ -112,7 +108,8 @@ async def on_message(message):
             print(f"Traitement message du canal {message.channel.id} (comparaison avec {bot.minecraft_channel_id})")
             cmd = ['sudo', 'tmux', 'send-keys', '-t', minecraft_tmux_session, f"say {username}: {message.content}", 'C-j'] if use_sudo else ['tmux', 'send-keys', '-t', minecraft_tmux_session, f"say {username}: {message.content}", 'C-j']
             try:
-                subprocess.run(
+                await asyncio.to_thread(
+                    subprocess.run,
                     cmd,
                     stdin=subprocess.PIPE,
                     stdout=subprocess.PIPE,
@@ -132,8 +129,6 @@ async def on_message(message):
                 traceback.print_exc()
     
     await bot.process_commands(message)
-
-        
 
 def run_bot():
     bot.run(config['token'])

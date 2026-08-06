@@ -152,26 +152,31 @@ function ajouter_whitelist() {
     echo -n "Entrez le nom du joueur à ajouter à la whitelist : "
     read -r NOM_JOUEUR
 
-    # Vérifier si le joueur est déjà dans la whitelist
-    if tmux capture-pane -t "$SESSION_NAME" -pS -1000 | grep -q "$NOM_JOUEUR"; then
-        echo "Le joueur '$NOM_JOUEUR' est déjà dans la whitelist."
-        retour_menu
+    # Vérifier si le joueur est déjà dans la whitelist en lisant le fichier whitelist.json
+    if [ -f "whitelist.json" ]; then
+        if grep -q "\"name\": \"$NOM_JOUEUR\"" whitelist.json; then
+            echo "Le joueur '$NOM_JOUEUR' est déjà dans la whitelist."
+            retour_menu
+            return
+        fi
     else
-        # Ajouter le joueur à la whitelist
-        tmux send-keys -t "$SESSION_NAME" "/whitelist add $NOM_JOUEUR" C-m
-        echo "Le joueur '$NOM_JOUEUR' a été ajouté à la whitelist."
-        
-        # Recharger la whitelist
-        tmux send-keys -t "$SESSION_NAME" "/whitelist reload" C-m
-		
-        # Annonce dans le chat avec couleurs
-        tmux send-keys -t "$SESSION_NAME" "/say §aLe joueur §e$NOM_JOUEUR §a a été ajouté à la whitelist" C-m
-
+        echo "Fichier whitelist.json introuvable. Vérifiez le répertoire du serveur."
         retour_menu
+        return
     fi
+
+    # Ajouter le joueur à la whitelist
+    tmux send-keys -t "$SESSION_NAME" "/whitelist add $NOM_JOUEUR" C-m
+    echo "Le joueur '$NOM_JOUEUR' a été ajouté à la whitelist."
+    
+    # Recharger la whitelist
+    tmux send-keys -t "$SESSION_NAME" "/whitelist reload" C-m
+	
+    # Annonce dans le chat avec couleurs
+    tmux send-keys -t "$SESSION_NAME" "/say §aLe joueur §e$NOM_JOUEUR §a a été ajouté à la whitelist" C-m
+
+    retour_menu
 }
-
-
 
 # Fonction pour arrêter le serveur
 function arreter_serveur() {
