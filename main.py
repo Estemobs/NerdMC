@@ -32,41 +32,73 @@ async def enable(ctx):
     if not ctx.author.guild_permissions.administrator:
         await ctx.send("Vous n'avez pas les permissions nécessaires pour exécuter cette commande.")
         return
+    
+    # Cancel any existing reading task
+    global stop_reading
+    stop_reading = True
+    # Give a moment for any existing task to notice the flag change
+    await asyncio.sleep(0.05)
+    
     bot.minecraft_channel_id = ctx.channel.id
     await ctx.send("Commande active. Envoi actif des messages discord vers Minecraft...")
     await ctx.send("Envoi actif des messages Minecraft vers Discord...")
     
-    global stop_reading
-    if stop_reading:
-        stop_reading = False
-        
+    stop_reading = False
+    
     # Capture les messages Minecraft
     cmd = ['sudo', 'tail', '-f', minecraft_log_path] if use_sudo else ['tail', '-f', minecraft_log_path]
-    bot.minecraft_log_process = subprocess.Popen(
-        cmd,
-        stdout=subprocess.PIPE,
-        bufsize=1,
-        universal_newlines=True,
-        text=True
-    )
+    try:
+        bot.minecraft_log_process = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            bufsize=1,
+            universal_newlines=True,
+            text=True
+        )
+    except Exception as e:
+        await ctx.send(f"Erreur lors du démarrage du processus de lecture des logs: {e}")
+        print(f"Failed to start log process: {e}")
+        return
     
     # Fonction pour lire les lignes du processus
     async def read_process():
-            try:
-                while not stop_reading:
+        try:
+            while not stop_reading:
+                try:
                     line = await asyncio.to_thread(bot.minecraft_log_process.stdout.readline)
                     if not line:
+                        # End of file or process terminated
                         break
-                    match = re.search(r'<([^>]+)> (.+)', line.strip())
-                    if match:
-                        username, message = match.groups()
-                        await ctx.send(f"{username}: {message}")
-            
-            except Exception as e:
-                print(f"Erreur dans read_process: {e}")
+                    line = line.strip()
+                    if line:
+                        match = re.search(r'<([^>]+)> (.+)', line)
+                        if match:
+                            username, message = match.groups()
+                            await ctx.send(f"{username}: {message}")
+                except (ValueError, OSError) as e:
+                    # Handle specific I/O errors
+                    if not stop_reading:  # Only log if we're still supposed to be reading
+                        print(f"I/O error in read_process: {e}")
+                    break
+                except Exception as e:
+                    # Unexpected error
+                    print(f"Unexpected error in read_process: {e}")
+                    traceback.print_exc()
+                    break
+        finally:
+            # Cleanup: ensure process is terminated
+            if hasattr(bot, 'minecraft_log_process') and bot.minecraft_log_process:
+                try:
+                    bot.minecraft_log_process.terminate()
+                    bot.minecraft_log_process.wait(timeout=2)
+                except subprocess.TimeoutExpired:
+                    bot.minecraft_log_process.kill()
+                except Exception as e:
+                    print(f"Error cleaning up log process: {e}")
+    
     # Lancez la lecture des messages Minecraft dans un thread
-    asyncio.create_task(read_process())
-  
+    bot.read_task = asyncio.create_task(read_process())
+
 @bot.command()
 async def disable(ctx):
     if not ctx.author.guild_permissions.administrator:
@@ -77,28 +109,44 @@ async def disable(ctx):
     if hasattr(bot, 'minecraft_channel_id') and bot.minecraft_channel_id:
         bot.minecraft_channel_id = None
         
-        # Fermez le processus qui lit les logs de Minecraft
-        if hasattr(bot, 'minecraft_log_process') and bot.minecraft_log_process:
-            print("Arrêt du processus de lecture des logs Minecraft...")
-            bot.minecraft_log_process.terminate()
-        
         # Arrêtez la lecture des messages Minecraft
         global stop_reading
         stop_reading = True
-        print(stop_reading)
         
-        # Rafraîchissez manuellement la valeur de stop_reading
-        await asyncio.sleep(0.01)  # Un peu de temps pour que le changement soit pris en compte
+        # Attendez que la tâche de lecture se termine
+        if hasattr(bot, 'read_task') and bot.read_task:
+            try:
+                await asyncio.wait_for(bot.read_task, timeout=5.0)
+            except asyncio.TimeoutError:
+                print("Read task did not finish in time, cancelling")
+                bot.read_task.cancel()
+                try:
+                    await bot.read_task
+                except asyncio.CancelledError:
+                    pass
+            except Exception as e:
+                print(f"Error waiting for read task: {e}")
         
-        # Arrêtez la lecture des messages Minecraft
-        bot.stop_reading = True
-        
-        # Attendre que la tâse se termine
-        await asyncio.sleep(0.1)
+        # Fermez le processus qui lit les logs de Minecraft
+        if hasattr(bot, 'minecraft_log_process') and bot.minecraft_log_process:
+            print("Arrêt du processus de lecture des logs Minecraft...")
+            try:
+                bot.minecraft_log_process.terminate()
+                # Wait for process to terminate gracefully
+                try:
+                    await asyncio.wait_for(asyncio.to_thread(bot.minecraft_log_process.wait), timeout=5.0)
+                except asyncio.TimeoutError:
+                    print("Process did not terminate in time, killing")
+                    bot.minecraft_log_process.kill()
+                    try:
+                        bot.minecraft_log_process.wait(timeout=2)
+                    except:
+                        pass
+            except Exception as e:
+                print(f"Error terminating log process: {e}")
         
         # Envoyez un message de confirmation
         await ctx.send("La commande a été désactivée. L'envoi des messages Minecraft vers Discord est maintenant désactivé et l'envoi de messages Discord vers Minecraft s'est arrêté.")
-    
     else:
         await ctx.send("La commande n'était pas activée.")
 
@@ -112,28 +160,26 @@ async def on_message(message):
             print(f"Traitement message du canal {message.channel.id} (comparaison avec {bot.minecraft_channel_id})")
             cmd = ['sudo', 'tmux', 'send-keys', '-t', minecraft_tmux_session, f"say {username}: {message.content}", 'C-j'] if use_sudo else ['tmux', 'send-keys', '-t', minecraft_tmux_session, f"say {username}: {message.content}", 'C-j']
             try:
-                subprocess.run(
+                result = subprocess.run(
                     cmd,
                     stdin=subprocess.PIPE,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
                     text=True,
-                    capture_output=False,
-                    check=True
+                    capture_output=True,
+                    check=False  # We'll handle the return code ourselves
                 )
-                print(f"Message envoyé avec succès dans Minecraft : {message.content}")
-            except subprocess.CalledProcessError as e:
-                print(f"Erreur lors de l'envoi du message dans Minecraft : {e}")
-                print("Erreur détaillée :")
-                print(e.stderr)
+                if result.returncode == 0:
+                    print(f"Message envoyé avec succès dans Minecraft : {message.content}")
+                else:
+                    print(f"Erreur lors de l'envoi du message dans Minecraft (code {result.returncode}): {result.stderr}")
+            except subprocess.SubprocessError as e:
+                print(f"Subprocess error lors de l'envoi du message dans Minecraft : {e}")
             except Exception as e:
-                print(f"Une erreur s'est produite : {e}")
-                print("Erreur détaillée :")
+                print(f"Une erreur inattendue s'est produite : {e}")
                 traceback.print_exc()
     
     await bot.process_commands(message)
-
-        
 
 def run_bot():
     bot.run(config['token'])
