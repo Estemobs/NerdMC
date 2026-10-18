@@ -61,12 +61,11 @@ async def enable(ctx):
                     if match:
                         username, message = match.groups()
                         await ctx.send(f"{username}: {message}")
-            
             except Exception as e:
                 print(f"Erreur dans read_process: {e}")
     # Lancez la lecture des messages Minecraft dans un thread
     asyncio.create_task(read_process())
-  
+
 @bot.command()
 async def disable(ctx):
     if not ctx.author.guild_permissions.administrator:
@@ -77,28 +76,26 @@ async def disable(ctx):
     if hasattr(bot, 'minecraft_channel_id') and bot.minecraft_channel_id:
         bot.minecraft_channel_id = None
         
+        # Arrêtez la lecture des messages Minecraft
+        global stop_reading
+        stop_reading = True
+        
         # Fermez le processus qui lit les logs de Minecraft
         if hasattr(bot, 'minecraft_log_process') and bot.minecraft_log_process:
             print("Arrêt du processus de lecture des logs Minecraft...")
             bot.minecraft_log_process.terminate()
-        
-        # Arrêtez la lecture des messages Minecraft
-        global stop_reading
-        stop_reading = True
-        print(stop_reading)
-        
-        # Rafraîchissez manuellement la valeur de stop_reading
-        await asyncio.sleep(0.01)  # Un peu de temps pour que le changement soit pris en compte
-        
-        # Arrêtez la lecture des messages Minecraft
-        bot.stop_reading = True
-        
-        # Attendre que la tâse se termine
-        await asyncio.sleep(0.1)
+            # Wait for the process to terminate (optional, but we can wait a bit)
+            try:
+                # Wait for the process to terminate with a timeout
+                await asyncio.wait_for(asyncio.to_thread(bot.minecraft_log_process.wait), timeout=5.0)
+            except asyncio.TimeoutError:
+                print("Timeout waiting for process to terminate, killing it.")
+                bot.minecraft_log_process.kill()
+            except Exception as e:
+                print(f"Error while waiting for process to terminate: {e}")
         
         # Envoyez un message de confirmation
         await ctx.send("La commande a été désactivée. L'envoi des messages Minecraft vers Discord est maintenant désactivé et l'envoi de messages Discord vers Minecraft s'est arrêté.")
-    
     else:
         await ctx.send("La commande n'était pas activée.")
 
@@ -133,7 +130,6 @@ async def on_message(message):
     
     await bot.process_commands(message)
 
-        
 
 def run_bot():
     bot.run(config['token'])
