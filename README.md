@@ -94,6 +94,11 @@ Le bot répond aux commandes suivantes dans les canaux où il a la permission de
 - Vérifiez que le bot a la permission d'exécuter les commandes tmux (avec sudo si nécessaire)
 - Consultez les logs du bot pour voir les erreurs lors de l'envoi des messages
 
+## État du projet
+
+Version 1.0.0 — les fonctionnalités décrites ci-dessus sont livrées et stables.
+Aucun ticket fonctionnel ouvert ; les mises à jour de dépendances sont automatisées par Renovate.
+
 ## Contribution
 
 Vous pouvez contribuer au développement de ce bot en soumettant des pull requests ou en participant aux discussions sur GitHub.
