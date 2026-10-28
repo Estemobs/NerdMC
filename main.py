@@ -8,8 +8,30 @@ import traceback
 import re
 
 config_path = os.environ.get('NERDMC_CONFIG', 'config.json')
-with open(config_path, 'r') as f:
-    config = json.load(f)
+REQUIRED_SETTINGS = ('token', 'command_prefix')
+
+
+def load_config(path):
+    if not os.path.exists(path):
+        raise SystemExit(
+            f"Configuration introuvable : {path}. Copiez config.json.example vers config.json."
+        )
+    try:
+        with open(path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+    except (OSError, json.JSONDecodeError) as exc:
+        raise SystemExit(f"Configuration invalide ({path}) : {exc}") from exc
+    if not isinstance(data, dict):
+        raise SystemExit(f"Configuration invalide ({path}) : un objet JSON est attendu.")
+    missing = [key for key in REQUIRED_SETTINGS if not data.get(key)]
+    if missing:
+        raise SystemExit(f"Configuration invalide ({path}) : champs manquants {', '.join(missing)}.")
+    if not isinstance(data['command_prefix'], str) or not data['command_prefix'].strip():
+        raise SystemExit(f"Configuration invalide ({path}) : command_prefix doit être une chaîne non vide.")
+    return data
+
+
+config = load_config(config_path)
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -98,6 +120,27 @@ async def disable(ctx):
         await ctx.send("La commande a été désactivée. L'envoi des messages Minecraft vers Discord est maintenant désactivé et l'envoi de messages Discord vers Minecraft s'est arrêté.")
     else:
         await ctx.send("La commande n'était pas activée.")
+
+@bot.command()
+async def status(ctx):
+    channel_id = getattr(bot, 'minecraft_channel_id', None)
+    process = getattr(bot, 'minecraft_log_process', None)
+    process_running = process is not None and process.poll() is None
+    embed = discord.Embed(
+        title="NerdMC — état",
+        color=discord.Color.green() if channel_id else discord.Color.orange(),
+    )
+    embed.add_field(
+        name="Relais Discord → Minecraft",
+        value=f"<#{channel_id}>" if channel_id else "désactivé",
+        inline=False,
+    )
+    embed.add_field(name="Lecture des logs", value="active" if process_running else "inactive", inline=True)
+    embed.add_field(name="Fichier de log", value=f"`{minecraft_log_path}`", inline=True)
+    embed.add_field(name="Session tmux", value=f"`{minecraft_tmux_session}`", inline=True)
+    embed.add_field(name="sudo", value="oui" if use_sudo else "non", inline=True)
+    await ctx.send(embed=embed)
+
 
 @bot.event
 async def on_message(message):
