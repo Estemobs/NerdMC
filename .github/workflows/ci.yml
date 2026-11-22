@@ -32,6 +32,9 @@ jobs:
       - name: Lint with ruff
         run: ruff check .
 
+      - name: Run tests
+        run: python -m unittest -v
+
       - name: Smoke test — compile check
         run: python -m compileall .
 

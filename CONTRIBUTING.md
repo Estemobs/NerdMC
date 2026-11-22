@@ -24,6 +24,8 @@ Prérequis : `tmux` installé sur le système.
 ## Vérifications avant PR
 
 ```bash
+ruff check .
+python -m unittest -v
 python -m compileall -q .
 ```
 

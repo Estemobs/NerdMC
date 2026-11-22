@@ -96,8 +96,9 @@ Le bot répond aux commandes suivantes dans les canaux où il a la permission de
 
 ## État du projet
 
-Version 1.0.1 — les fonctionnalités décrites ci-dessus sont livrées.
-Aucun ticket fonctionnel ouvert ; les mises à jour de dépendances sont automatisées par Renovate.
+Version 1.0.1 — **projet terminé**. Toutes les fonctionnalités décrites ci-dessus sont livrées et couvertes par des tests unitaires (`python -m unittest -v`) ; le CI exécute le lint (`ruff check .`), les tests et le compile check. Aucun ticket fonctionnel ouvert ; les mises à jour de dépendances sont automatisées par Renovate.
+
+> Dernière étape recommandée avant mise en production : valider le relais en conditions réelles sur un serveur Minecraft (`tmux` + `sudo`) et un serveur Discord de test.
 
 ## Contribution
 

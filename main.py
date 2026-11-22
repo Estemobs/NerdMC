@@ -4,11 +4,18 @@ import json
 import os
 import subprocess
 import asyncio
-import traceback
+import atexit
+import logging
+import shutil
+import signal
 import re
 
 config_path = os.environ.get('NERDMC_CONFIG', 'config.json')
 REQUIRED_SETTINGS = ('token', 'command_prefix')
+CHAT_RE = re.compile(r'<([^>]+)> (.+)')
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s')
+log = logging.getLogger('nerdmc')
 
 
 def load_config(path):
@@ -35,7 +42,6 @@ config = load_config(config_path)
 
 intents = discord.Intents.default()
 intents.message_content = True
-stop_reading = False
 
 minecraft_log_path = config.get('minecraft_log_path', '/home/minecraft/logs/latest.log')
 minecraft_tmux_session = config.get('minecraft_tmux_session', 'minecraft')
@@ -43,83 +49,105 @@ use_sudo = config.get('use_sudo', True)
 
 bot = commands.Bot(command_prefix=config['command_prefix'], intents=intents)
 
+if shutil.which('tmux') is None:
+    log.warning("tmux introuvable dans le PATH : l'envoi Discord → Minecraft ne fonctionnera pas.")
+
+
+def _terminate(proc):
+    """Tue le groupe de processus : sudo lance tail dans un sous-processus."""
+    if proc is None or proc.poll() is not None:
+        return
+    try:
+        os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+    except ProcessLookupError:
+        pass
+
+
+async def _stop_relay():
+    bot.minecraft_channel_id = None
+    proc = getattr(bot, 'minecraft_log_process', None)
+    bot.minecraft_log_process = None
+    task = getattr(bot, 'read_task', None)
+    bot.read_task = None
+
+    if proc is not None and proc.poll() is None:
+        _terminate(proc)
+        try:
+            await asyncio.wait_for(asyncio.to_thread(proc.wait), timeout=5.0)
+        except asyncio.TimeoutError:
+            log.warning("Le processus tail ne s'arrête pas, kill forcé.")
+            try:
+                os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+    if task is not None:
+        task.cancel()
+
+
+async def _read_log(channel, proc):
+    try:
+        while True:
+            line = await asyncio.to_thread(proc.stdout.readline)
+            if not line:
+                break
+            match = CHAT_RE.search(line.strip())
+            if match:
+                username, message = match.groups()
+                await channel.send(f"{username}: {message}")
+    except asyncio.CancelledError:
+        pass
+    except Exception:
+        log.exception("Erreur dans la lecture des logs Minecraft")
+
+
+def _cleanup():
+    _terminate(getattr(bot, 'minecraft_log_process', None))
+
+
+atexit.register(_cleanup)
+
+
 @bot.event
 async def on_ready():
-    print(f'{bot.user} has connected to Discord!')
+    log.info("%s has connected to Discord!", bot.user)
     game = discord.Game(name="mc.forezaaaa.fr")
     await bot.change_presence(activity=game)
+
 
 @bot.command()
 async def enable(ctx):
     if not ctx.author.guild_permissions.administrator:
         await ctx.send("Vous n'avez pas les permissions nécessaires pour exécuter cette commande.")
         return
-    bot.minecraft_channel_id = ctx.channel.id
-    await ctx.send("Commande active. Envoi actif des messages discord vers Minecraft...")
-    await ctx.send("Envoi actif des messages Minecraft vers Discord...")
-    
-    global stop_reading
-    if stop_reading:
-        stop_reading = False
-        
-    # Capture les messages Minecraft
-    cmd = ['sudo', 'tail', '-f', minecraft_log_path] if use_sudo else ['tail', '-f', minecraft_log_path]
-    bot.minecraft_log_process = subprocess.Popen(
+
+    await _stop_relay()
+    cmd = ['sudo', 'tail', '-F', minecraft_log_path] if use_sudo else ['tail', '-F', minecraft_log_path]
+    proc = subprocess.Popen(
         cmd,
         stdout=subprocess.PIPE,
         bufsize=1,
         universal_newlines=True,
-        text=True
+        text=True,
+        start_new_session=True,
     )
-    
-    # Fonction pour lire les lignes du processus
-    async def read_process():
-            try:
-                while not stop_reading:
-                    line = await asyncio.to_thread(bot.minecraft_log_process.stdout.readline)
-                    if not line:
-                        break
-                    match = re.search(r'<([^>]+)> (.+)', line.strip())
-                    if match:
-                        username, message = match.groups()
-                        await ctx.send(f"{username}: {message}")
-            except Exception as e:
-                print(f"Erreur dans read_process: {e}")
-    # Lancez la lecture des messages Minecraft dans un thread
-    asyncio.create_task(read_process())
+    bot.minecraft_log_process = proc
+    bot.minecraft_channel_id = ctx.channel.id
+    bot.read_task = asyncio.create_task(_read_log(ctx.channel, proc))
+    await ctx.send("Relais actif : Minecraft → Discord et Discord → Minecraft dans ce canal.")
+
 
 @bot.command()
 async def disable(ctx):
     if not ctx.author.guild_permissions.administrator:
         await ctx.send("Vous n'avez pas les permissions nécessaires pour exécuter cette commande.")
         return
-    
-    # Arrêtez l'envoi de messages Discord vers Minecraft
-    if hasattr(bot, 'minecraft_channel_id') and bot.minecraft_channel_id:
-        bot.minecraft_channel_id = None
-        
-        # Arrêtez la lecture des messages Minecraft
-        global stop_reading
-        stop_reading = True
-        
-        # Fermez le processus qui lit les logs de Minecraft
-        if hasattr(bot, 'minecraft_log_process') and bot.minecraft_log_process:
-            print("Arrêt du processus de lecture des logs Minecraft...")
-            bot.minecraft_log_process.terminate()
-            # Wait for the process to terminate (optional, but we can wait a bit)
-            try:
-                # Wait for the process to terminate with a timeout
-                await asyncio.wait_for(asyncio.to_thread(bot.minecraft_log_process.wait), timeout=5.0)
-            except asyncio.TimeoutError:
-                print("Timeout waiting for process to terminate, killing it.")
-                bot.minecraft_log_process.kill()
-            except Exception as e:
-                print(f"Error while waiting for process to terminate: {e}")
-        
-        # Envoyez un message de confirmation
-        await ctx.send("La commande a été désactivée. L'envoi des messages Minecraft vers Discord est maintenant désactivé et l'envoi de messages Discord vers Minecraft s'est arrêté.")
+
+    if getattr(bot, 'minecraft_channel_id', None):
+        await _stop_relay()
+        await ctx.send("Relais désactivé.")
     else:
-        await ctx.send("La commande n'était pas activée.")
+        await ctx.send("Le relais n'était pas activé.")
+
 
 @bot.command()
 async def status(ctx):
@@ -146,36 +174,33 @@ async def status(ctx):
 async def on_message(message):
     if message.author.bot:
         return
-    if hasattr(bot, 'minecraft_channel_id') and bot.minecraft_channel_id:
-        if message.channel.id == bot.minecraft_channel_id:
-            username = str(message.author)
-            print(f"Traitement message du canal {message.channel.id} (comparaison avec {bot.minecraft_channel_id})")
-            cmd = ['sudo', 'tmux', 'send-keys', '-t', minecraft_tmux_session, f"say {username}: {message.content}", 'C-j'] if use_sudo else ['tmux', 'send-keys', '-t', minecraft_tmux_session, f"say {username}: {message.content}", 'C-j']
-            try:
-                subprocess.run(
-                    cmd,
-                    stdin=subprocess.PIPE,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    text=True,
-                    capture_output=False,
-                    check=True
-                )
-                print(f"Message envoyé avec succès dans Minecraft : {message.content}")
-            except subprocess.CalledProcessError as e:
-                print(f"Erreur lors de l'envoi du message dans Minecraft : {e}")
-                print("Erreur détaillée :")
-                print(e.stderr)
-            except Exception as e:
-                print(f"Une erreur s'est produite : {e}")
-                print("Erreur détaillée :")
-                traceback.print_exc()
-    
+
+    channel_id = getattr(bot, 'minecraft_channel_id', None)
+    if channel_id and message.channel.id == channel_id:
+        username = str(message.author)
+        cmd = ['sudo', 'tmux', 'send-keys', '-t', minecraft_tmux_session, f"say {username}: {message.content}", 'C-j'] if use_sudo else ['tmux', 'send-keys', '-t', minecraft_tmux_session, f"say {username}: {message.content}", 'C-j']
+        try:
+            await asyncio.to_thread(
+                subprocess.run,
+                cmd,
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                check=True,
+            )
+            log.info("Message envoyé dans Minecraft : %s", message.content)
+        except subprocess.CalledProcessError as e:
+            log.error("Erreur lors de l'envoi du message dans Minecraft : %s\n%s", e, e.stderr)
+        except Exception:
+            log.exception("Erreur lors de l'envoi du message dans Minecraft")
+
     await bot.process_commands(message)
 
 
 def run_bot():
     bot.run(config['token'])
+
 
 if __name__ == "__main__":
     run_bot()
